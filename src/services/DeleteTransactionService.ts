@@ -1,23 +1,24 @@
 import { getCustomRepository } from 'typeorm';
+
+import TransactionRepository from '../repositories/TransactionsRepository';
+
 import AppError from '../errors/AppError';
-import TransactionsRepository from '../repositories/TransactionsRepository';
 
+interface Request {
+  id: string;
+}
 class DeleteTransactionService {
-    public async execute(transactin_id: string): Promise<void> {
-        const transactionsRepository = getCustomRepository(
-            TransactionsRepository,
-        );
+  public async execute({ id }: Request): Promise<void> {
+    const transactionRepository = getCustomRepository(TransactionRepository);
 
-        const transactionResponse = await transactionsRepository.findOne(
-            transactin_id,
-        );
+    const transaction = transactionRepository.findOne({ where: { id } });
 
-        if (!transactionResponse) {
-            throw new AppError('This transaction does not exist!', 404);
-        }
-
-        await transactionsRepository.delete(transactin_id);
+    if (!transaction) {
+      throw new AppError('Transaction does not exists');
     }
+
+    await transactionRepository.delete({ id });
+  }
 }
 
 export default DeleteTransactionService;

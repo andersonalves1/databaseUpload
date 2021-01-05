@@ -1,69 +1,76 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { getRepository, getCustomRepository } from 'typeorm';
-import AppError from '../errors/AppError';
-import Transaction from '../models/Transaction';
-import TransactionRepository from '../repositories/TransactionsRepository';
-import Category from '../models/Category';
 
-interface RequestDTO {
-    title: string;
-    value: number;
-    type: 'income' | 'outcome';
-    category: string;
+import Category from '../models/Category';
+import AppError from '../errors/AppError';
+
+import TransactionsRepository from '../repositories/TransactionsRepository';
+import Transaction from '../models/Transaction';
+
+interface Request {
+  title: string;
+  value: number;
+  type: 'income' | 'outcome';
+  category: string;
+}
+
+interface Response {
+  id: string;
+  title: string;
+  value: number;
+  type: 'income' | 'outcome';
+  category: string;
 }
 
 class CreateTransactionService {
-    public async execute({
-        title,
-        value,
-        type,
-        category,
-    }: RequestDTO): Promise<Transaction> {
-        const transactionRepository = getCustomRepository(
-            TransactionRepository,
-        );
+  public async execute({
+    title,
+    value,
+    type,
+    category,
+  }: Request): Promise<Transaction> {
+    const categoryRepository = getRepository(Category);
+    const transactionRepository = getCustomRepository(TransactionsRepository);
 
-        const categoryRepository = getRepository(Category);
+    const categoryCapitalized =
+      category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
+    const { total } = await transactionRepository.getBalance();
 
-        const {
-            total: totalBalance,
-        } = await transactionRepository.getBalance();
-
-        if (type === 'outcome' && value >= totalBalance) {
-            throw new AppError(
-                'O valor de retirada está acima do saldo total!',
-                400,
-            );
-        }
-
-        const categoryExists = await categoryRepository.findOne({
-            where: { title: category },
-        });
-
-        let category_id;
-
-        if (!categoryExists) {
-            const categoryObj = categoryRepository.create({
-                title: category,
-            });
-
-            const categoryRef = await categoryRepository.save(categoryObj);
-
-            category_id = categoryRef.id;
-        } else {
-            category_id = categoryExists.id;
-        }
-
-        const transactionObj = transactionRepository.create({
-            title,
-            value,
-            type,
-            category_id,
-        });
-
-        await transactionRepository.save(transactionObj);
-        return transactionObj;
+    if (!['income', 'outcome'].includes(type)) {
+      throw new AppError('Invalid type');
     }
+    if (type === 'outcome' && value > total) {
+      throw new AppError('Not enough cash');
+    }
+
+    if (
+      !(await categoryRepository.findOne({
+        where: { title: categoryCapitalized },
+      }))
+    ) {
+      const newCategory = categoryRepository.create({
+        title: categoryCapitalized,
+      });
+      await categoryRepository.save(newCategory);
+    }
+
+    const transactionCategory = await categoryRepository.findOne({
+      where: { title: categoryCapitalized },
+    });
+
+    if (transactionCategory === undefined) {
+      throw new AppError('Database error.');
+    }
+    const transaction = transactionRepository.create({
+      title,
+      value,
+      type,
+      category: transactionCategory,
+    });
+
+    await transactionRepository.save(transaction);
+
+    return transaction;
+  }
 }
 
 export default CreateTransactionService;
